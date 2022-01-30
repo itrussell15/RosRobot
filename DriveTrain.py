@@ -73,6 +73,8 @@ class DriveController(Node):
             else:
                 print("Turning: {}".format(self._spin))
                 self.driveTrain.turn(self._spin)
+                self._speed = 0
+
             self.status = self.DriveStatus.IN_MOTION
             if self.stopped_timer in self.timers:
                 self.destroy_timer(self.stopped_timer)
@@ -82,6 +84,7 @@ class DriveController(Node):
             self.status = self.DriveStatus.STOPPED
             if not self.manager.directions["forward"] and self.stopped_timer not in self.timers:
                 print("Creating blocked timer")
+                # TODO Turn this into a service from sensor?
                 self.stopped_timer = self.create_timer(1, self._stopped_handler)
 
     def _stopped_handler(self):
@@ -101,7 +104,6 @@ class DriveController(Node):
         self.stop()
         self.destroy_timer(self.end_stop)
         self._driveOverride = False
-
 
     def stop(self):
         self.driveTrain.stop()
