@@ -5,7 +5,7 @@ Created on Thu Jan 27 09:23:27 2022
 
 @author: schmuck
 """
-
+# %% Imports
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
@@ -17,137 +17,145 @@ from enum import Enum
 from misc.I2C_Control import LowLevelI2C
 from misc.enums import *
 
+# %% Drive Controller Class
 class DriveController(Node):
 
+# %%% Startup
     def __init__(self, max_val = 150):
         super().__init__("drive_train")
-
+    
         thresholds = {"slow": 0.15, "stop": 0.10}
         self.manager = self.DriveManager(thresholds)
         self.driveTrain = self.DriveTrain()
         self._driveOverride = False
-
+    
         self._CreateLinks()
-
+    
         self._speed = 0.0
         self._spin = 0.0
-
+    
         self.status = self.DriveStatus.STOPPED
         self.stop_timeout = 3
         self.stopped_count = 0
         self.stopped_timer = None
+        
+        def _CreateLinks(self):
+            self._cmd_vel_sub = self.create_subscription(
+                Twist,
+                "cmd_vel",
+                self._vel_callback,
+                10
+            )
+            self._range_sensor_sub = self.create_subscription(
+                Range,
+                "range_sensor",
+                self._sensor_speed_change,
+                10
+            )
+    
+# %%% Subscriber Callbacks
 
     def _vel_callback(self, msg):
         self._speed = self.manager.get_speed(msg.linear.x)
         self._spin = msg.angular.z
-
-        # if spin != 0 or self._speed != 0:
-        #     # Checks for biggest value to perform a move
-        #     if abs(self._speed) > 0:
-        #         print("Forward: {}".format(self._speed))
-        #         self.driveTrain.drive(self._speed)
-        #     else:
-        #         print("Turning: {}".format(self._turn))
-        #         self.driveTrain.turn(self._turn)
-        # else:
-        #     print("Stopping")
-        #     self.driveTrain.stop()
-
+    
     def _sensor_speed_change(self, msg):
         self.manager.range_callback(msg)
         new_speed = self.manager.get_speed(self._speed)
-        if not self._driveOverride:
-            if new_speed != self._speed:
-                self._speed = new_speed
-        else:
-            print("OVERRIDE")
-        self._drive()
+        if not self._driveOverride and new_speed != self._speed:
+            # if new_speed != self._speed:
+            self._speed = new_speed
+    
+        self._control()
 
-    def _drive(self):
-        if self._spin != 0 or abs(self._speed) > 0.005:
+# %%% Drive Control
+
+    def _control(self):
+        max_motion_val = abs(max(self._spin, self._speed))
+        if max_motion_val > 0.005:
             # Checks for biggest value to perform a move
-            if abs(self._speed) > 0:
-                print("Forward: {}".format(self._speed))
-                self.driveTrain.drive(self._speed)
-                self._spin = 0
+            if self._speed == max_motion_val:
+                self.move()
             else:
-                print("Turning: {}".format(self._spin))
-                self.driveTrain.turn(self._spin)
-                self._speed = 0
-
-            self.status = self.DriveStatus.IN_MOTION
-            if self.stopped_timer in self.timers:
-                self.destroy_timer(self.stopped_timer)
+                self.turn()
         else:
-            print("Stopping")
-            self.driveTrain.stop()
-            self.status = self.DriveStatus.STOPPED
-            if not self.manager.directions["forward"] and self.stopped_timer not in self.timers:
-                print("Creating blocked timer")
-                # TODO Turn this into a service from sensor?
-                self.stopped_timer = self.create_timer(1, self._stopped_handler)
+            self.stop()
+        
+        # if self.stopped_count <= self.stop_timeout:
+        #     self.stopped_count += 1
+        # else:
+        #     print("blocked time exceeded")
+        #     self.end_stop = self.create_timer(2, self._continue)
+        #     self.stopped_count = 0
+        #     self._driveOverride = True
+        #     self._speed = -0.25
+        #     self.stopped_timer.destroy()
+        #     self.stopped_timer = None
+        
+
+
+    
+# %%% Motion Handlers    
+
+    def move(self):
+        print("Forward: {}".format(self._speed))
+        self.driveTrain.drive(self._speed)
+        self._spin = 0
+        self._inMotion()
+    
+    def turn(self):
+        print("Turning: {}".format(self._spin))
+        self.driveTrain.turn(self._spin)
+        self._speed = 0
+        self._inMotion()
+        
+    def stop(self):
+        print("Stopped")
+        self.driveTrain.stop()
+        self.status = self.DriveStatus.STOPPED
+        if not self._driveOverride:
+            self._speed = 0
+            self._spin = 0
+            
+        if self._isBlocked:
+            self.stopped_timer = self.create_timer(self.stopped_timeout, self._stopped_handler)
+            
+    def _inMotion(self):
+        self.status = self.DriveStatus.IN_MOTION
+        self.destroyBlockedTimer()  
+
+# %%% Blocked Handlers
 
     def _stopped_handler(self):
-        if self.stopped_count <= self.stop_timeout:
-            self.stopped_count += 1
-        else:
-            print("blocked time exceeded")
-            self.end_stop = self.create_timer(2, self._continue)
-            self.stopped_count = 0
-            self._driveOverride = True
-            self._speed = -0.25
-            self.stopped_timer.destroy()
-            self.stopped_timer = None
-
+        print("blocked time exceeded")
+        self.stopped_timer.destroy()
+        self.stopped_timer = None
+        self._driveOverride = True
+        self._speed = -0.25
+        self.end_stop = self.create_timer(1.5, self._continue)
+        
     def _continue(self):
         print("HERE")
         self.stop()
         self.destroy_timer(self.end_stop)
         self._driveOverride = False
 
-    def stop(self):
-        self.driveTrain.stop()
-        self._speed = 0
+    def _isBlocked(self):
+        # if it is unable to move forward and there hasn't been a blocked timer started
+        return not self.manager.directions["forward"] and self.stopped_timer not in self.timers
+    
+    def _destroyBlockedTimer(self):
+        if self.stopped_timer in self.timers:
+            self.stopped_timer.destroy()
 
-    def _CreateLinks(self):
-        self._cmd_vel_sub = self.create_subscription(
-            Twist,
-            "cmd_vel",
-            self._vel_callback,
-            10
-        )
-        self._range_sensor_sub = self.create_subscription(
-            Range,
-            "range_sensor",
-            self._sensor_speed_change,
-            10
-        )
-
-    @staticmethod
-    def _close_enough(val, target, slop = 0.005):
-        return val < target + slop
-
-    # def drive(self, value):
-    #     print("Drive Command Sent: {}%".format(value))
-    #     array = self._left.drive(value)
-    #     array.extend(self._right.drive(value))
-    #     self._device.write_array(int(Registers.MOVE), array)
-    #     self.speed = value
-
-    # def turn(self, value):
-    #     array = self._left.drive(value)
-    #     array.extend(self._right.drive(-value))
-    #     self._device.write_array(int(Registers.MOVE), array)
-
-    # def stop(self, stop = True):
-    #     self.speed = 0
-    #     # self._set_status(DriveStatus.STOPPED)
-    #     self._device.writeByte(int(Registers.STOP), 0x00)
+# %% Subclasses
+    # %%%% Enums
 
     class DriveStatus(Enum):
         IN_MOTION = 0
         STOPPED = 1
-
+        
+    # %%%% Drive Train 
     class DriveTrain:
 
         def __init__(self):
@@ -170,7 +178,7 @@ class DriveController(Node):
             self._llc.writeByte(int(Registers.STOP), 0x00)
 
 
-
+        # %%%%% Left and Right side Controller 
         class DriveSide:
 
                 def __init__(self, max_value = 150):
@@ -197,7 +205,8 @@ class DriveController(Node):
 
                     # Convert the 0-1 range into a value in the right range.
                     return toMin + (valueScaled * toSpan)
-
+    
+    # %%%% Drive Decision Maker based on sensor input
     class DriveManager:
 
         def __init__(self, thresh):
@@ -267,7 +276,7 @@ class DriveController(Node):
             return val < self.stop_dist + slop
 
 
-
+# %% Main Loop
 def main(args=None):
 
 
