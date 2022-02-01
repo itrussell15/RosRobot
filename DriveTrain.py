@@ -19,6 +19,8 @@ from misc.enums import *
 
 # %% Drive Controller Class
 class DriveController(Node):
+    
+    # THIS IS A TEST
 
 # %%% Startup
     def __init__(self, max_val = 150):
@@ -60,15 +62,10 @@ class DriveController(Node):
         self._spin = msg.angular.z
     
     def _sensor_speed_change(self, msg):
-#        print(self.manager.directions["forward"])
-#        print(self.stopped_timer in self.timers)
-#        print("---")
         self.manager.range_callback(msg)
         new_speed = self.manager.get_speed(self._speed)
         if not self._driveOverride and new_speed != self._speed:
-            # if new_speed != self._speed:
             self._speed = new_speed
-        #print(self._speed)
         self._control()
 
 # %%% Drive Control
