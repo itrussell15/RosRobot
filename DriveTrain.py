@@ -20,7 +20,6 @@ from misc.enums import *
 # %% Drive Controller Class
 class DriveController(Node):
     
-    # THIS IS A TEST
 
 # %%% Startup
     def __init__(self, max_val = 150):

@@ -46,7 +46,7 @@ class PI_Control:
         self._P = self.kp * error
         self._I = self._integralResponse(error, tau.total_seconds())
         print("P = {:.2f} I = {:.2f} --> Input = {:.2f}".format(self._P, self._I, val))
-        return self._P + self._I
+        return self._P + self._I + val
         # self._D = self._derivativeResponse(error, tau.total_seconds())
         
         # print("P = {:.2f}".format(self._P))

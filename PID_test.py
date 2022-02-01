@@ -26,7 +26,7 @@ store = [start]
 x = [i for i in range(1, 50)]
 
 for i in x:
-    current += control.gain(current)
+    current = control.gain(current)
     if i == 5 or i == 10:
         current += 100
     # print(current)

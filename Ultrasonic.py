@@ -2,16 +2,20 @@ import RPi.GPIO as GPIO
 import rclpy
 from rclpy.node import Node
 
+from geometry_msgs.msg import Twist
 from std_msgs.msg import String
 from sensor_msgs.msg import Range
 
 import time, math
+from PID import PI_Control
 
 class SensorRead(Node):
 
     def __init__(self, echo = 24, trigger = 23, freq = 10):
         super().__init__("sensor_read")
         self.range_sensor, self._range_msg = self._configureUltrasonic(echo, trigger, freq)
+        self.PID = PI_Control(kp = 0.9, ki = 0.1)
+        self.PID.set_target(0.75)
         self._ultraSensor = self.UltrasonicSensor()
         self.start()
 
@@ -21,6 +25,7 @@ class SensorRead(Node):
             echo = echo,
             trigger = trigger)
         distance_publisher = self.create_publisher(Range, "range_sensor", 10)
+        self.cmd_vel_publisher = self.create_publisher(Twist, "cmd_vel", 10)
         msg = Range()
         msg.radiation_type = Range.ULTRASOUND
         msg.field_of_view = self._distance_sensor.angle
@@ -31,6 +36,22 @@ class SensorRead(Node):
     def _range_callback(self):
         self._range_msg.range = self._ultraSensor.read()
         self.range_sensor.publish(self._range_msg)
+        
+        twist_msg = Twist()
+        twist_msg.linear.x = self._map_values(self.PID.gain(self._range_msg), -1000, 1000, 0, 1)
+        self.cmd_vel_publisher.publish(twist_msg)
+        
+    @staticmethod
+    def _map_values(value, fromMin, fromMax, toMin, toMax):
+        # Figure out how 'wide' each range is
+        fromSpan = fromMax - fromMin
+        toSpan = toMax - toMin
+
+        # Convert the left range into a 0-1 range (float)
+        valueScaled = float(value - fromMin) / float(fromSpan)
+
+        # Convert the 0-1 range into a value in the right range.
+        return toMin + (valueScaled * toSpan)
 
     def start(self):
         self._distance_timer = self.create_timer(1.0 / self._hz, self._range_callback)
