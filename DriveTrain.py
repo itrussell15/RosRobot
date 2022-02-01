@@ -39,18 +39,18 @@ class DriveController(Node):
         self.stopped_count = 0
         self.stopped_timer = None
         
-        def _CreateLinks(self):
-            self._cmd_vel_sub = self.create_subscription(
-                Twist,
-                "cmd_vel",
-                self._vel_callback,
-                10
-            )
-            self._range_sensor_sub = self.create_subscription(
-                Range,
-                "range_sensor",
-                self._sensor_speed_change,
-                10
+    def _CreateLinks(self):
+        self._cmd_vel_sub = self.create_subscription(
+            Twist,
+            "cmd_vel",
+            self._vel_callback,
+            10
+        )
+        self._range_sensor_sub = self.create_subscription(
+            Range,
+            "range_sensor",
+             self._sensor_speed_change,
+             10
             )
     
 # %%% Subscriber Callbacks
@@ -60,21 +60,25 @@ class DriveController(Node):
         self._spin = msg.angular.z
     
     def _sensor_speed_change(self, msg):
+#        print(self.manager.directions["forward"])
+#        print(self.stopped_timer in self.timers)
+#        print("---")
         self.manager.range_callback(msg)
         new_speed = self.manager.get_speed(self._speed)
         if not self._driveOverride and new_speed != self._speed:
             # if new_speed != self._speed:
             self._speed = new_speed
-    
+        #print(self._speed)
         self._control()
 
 # %%% Drive Control
 
     def _control(self):
-        max_motion_val = abs(max(self._spin, self._speed))
+        max_motion_val = abs(max(abs(self._spin), abs(self._speed)))
+        print("Speed: {} Max Motion Val: {}".format(self._speed, max_motion_val))
         if max_motion_val > 0.005:
             # Checks for biggest value to perform a move
-            if self._speed == max_motion_val:
+            if abs(self._speed) == max_motion_val:
                 self.move()
             else:
                 self.turn()
@@ -98,7 +102,7 @@ class DriveController(Node):
 # %%% Motion Handlers    
 
     def move(self):
-        print("Forward: {}".format(self._speed))
+        #print("Forward: {}".format(self._speed))
         self.driveTrain.drive(self._speed)
         self._spin = 0
         self._inMotion()
@@ -110,19 +114,21 @@ class DriveController(Node):
         self._inMotion()
         
     def stop(self):
-        print("Stopped")
+        #print("Stopped")
         self.driveTrain.stop()
         self.status = self.DriveStatus.STOPPED
         if not self._driveOverride:
             self._speed = 0
             self._spin = 0
             
-        if self._isBlocked:
-            self.stopped_timer = self.create_timer(self.stopped_timeout, self._stopped_handler)
+        if self._isBlocked():
+           # pass
+           print("Robot Blocked")
+           self.stopped_timer = self.create_timer(self.stop_timeout, self._stopped_handler)
             
     def _inMotion(self):
         self.status = self.DriveStatus.IN_MOTION
-        self.destroyBlockedTimer()  
+        self._destroyBlockedTimer()  
 
 # %%% Blocked Handlers
 
@@ -136,9 +142,9 @@ class DriveController(Node):
         
     def _continue(self):
         print("HERE")
-        self.stop()
         self.destroy_timer(self.end_stop)
         self._driveOverride = False
+        self.stop()
 
     def _isBlocked(self):
         # if it is unable to move forward and there hasn't been a blocked timer started

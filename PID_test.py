@@ -6,12 +6,12 @@ Created on Sat Jan 29 17:13:44 2022
 @author: schmuck
 """
 
-from PID import PID_Control
+from PID import PI_Control
 import time, datetime
 import matplotlib.pyplot as plt
 
 
-control = PID_Control(
+control = PI_Control(
     kp = 0.9,
     ki = 0.35,
     kd = 0)
