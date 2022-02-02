@@ -7,6 +7,7 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Range
 
 import time, math
+from misc.Math import clamp
 from PID import PI_Control
 
 class SensorRead(Node):
@@ -14,18 +15,23 @@ class SensorRead(Node):
     def __init__(self, echo = 24, trigger = 23, freq = 10):
         super().__init__("sensor_read")
         self.range_sensor, self._range_msg = self._configureUltrasonic(echo, trigger, freq)
-        self.PID = PI_Control(kp = 0.9, ki = 0.1)
-        self.PID.set_target(0.75)
+        self.PID = PI_Control(kp = 10, ki = 0.2, kd = 0)
+        self._target = 0.25
+        self.PID.set_target(0)
         self._ultraSensor = self.UltrasonicSensor()
         self.start()
+        
+        self._gain = 0
 
     def _configureUltrasonic(self, hz, echo, trigger):
         self._hz = hz
         self._distance_sensor = self.UltrasonicSensor(
             echo = echo,
             trigger = trigger)
+
         distance_publisher = self.create_publisher(Range, "range_sensor", 10)
         self.cmd_vel_publisher = self.create_publisher(Twist, "cmd_vel", 10)
+        
         msg = Range()
         msg.radiation_type = Range.ULTRASOUND
         msg.field_of_view = self._distance_sensor.angle
@@ -37,10 +43,25 @@ class SensorRead(Node):
         self._range_msg.range = self._ultraSensor.read()
         self.range_sensor.publish(self._range_msg)
         
-        twist_msg = Twist()
-        twist_msg.linear.x = self._map_values(self.PID.gain(self._range_msg), -1000, 1000, 0, 1)
+        twist_msg = self._CreateTwist(self._range_msg.range)
         self.cmd_vel_publisher.publish(twist_msg)
         
+        
+    def _CreateTwist(self, dist, bounds = [0.15, 1.5]):
+        clamp_lim = 5
+        # Get PID gain from sensor
+        self._gain = self.PID.gain(self._target - dist)
+        # Clamp value to +/- 100
+        gain_clamp = clamp(self._gain, -clamp_lim, clamp_lim)
+        # Map values to +/- 1 to send to the motors
+        gain_map = self._map_values(gain_clamp, -clamp_lim, clamp_lim, -1, 1)
+        print('Distance: {:.2f}, Actual Gain: {:.2f}, Clamp Gain: {:.2f}, Map Gain: {:.2f}'.format(self._target - dist, self._gain, gain_clamp, gain_map))
+        twist = Twist()
+        twist.linear.x = gain_map
+        return twist
+        
+            
+    
     @staticmethod
     def _map_values(value, fromMin, fromMax, toMin, toMax):
         # Figure out how 'wide' each range is

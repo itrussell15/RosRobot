@@ -38,14 +38,14 @@ class PI_Control:
             self._last_sample = datetime.datetime.now()
         
         error = self._target - val
-        print("error {}".format(error))
+#        print("error {}".format(error))
         now = datetime.datetime.now()
         tau = now - self._last_sample
         self._last_sample = now
         
         self._P = self.kp * error
         self._I = self._integralResponse(error, tau.total_seconds())
-        print("P = {:.2f} I = {:.2f} --> Input = {:.2f}".format(self._P, self._I, val))
+        # print("P = {:.2f} I = {:.2f} --> Input = {:.2f}".format(self._P, self._I, val))
         return self._P + self._I + val
         # self._D = self._derivativeResponse(error, tau.total_seconds())
         

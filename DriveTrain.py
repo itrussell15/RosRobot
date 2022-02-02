@@ -47,18 +47,21 @@ class DriveController(Node):
             self._vel_callback,
             10
         )
-        self._range_sensor_sub = self.create_subscription(
-            Range,
-            "range_sensor",
-             self._sensor_speed_change,
-             10
-            )
+#        self._range_sensor_sub = self.create_subscription(
+#            Range,
+#            "range_sensor",
+#             self._sensor_speed_change,
+#             10
+#            )
     
 # %%% Subscriber Callbacks
 
     def _vel_callback(self, msg):
-        self._speed = self.manager.get_speed(msg.linear.x)
+        #print("HERE")
+#        self._speed = self.manager.get_speed(msg.linear.x)
+        self._speed = msg.linear.x
         self._spin = msg.angular.z
+        self._control()
     
     def _sensor_speed_change(self, msg):
         self.manager.range_callback(msg)
@@ -295,6 +298,7 @@ def main(args=None):
     rclpy.spin(Drive)
 
     #  Interrupt detected, shut down
+    Drive.stop()
     GPIO.cleanup()
     Drive.destroy_node()
     rclpy.shutdown()
